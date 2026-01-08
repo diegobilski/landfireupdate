@@ -11,80 +11,114 @@ checkLibrary <- function(libraryName, projectName, runTags) {
   mylibrary <- ssimLibrary(libraryName, session = ssimSession)
   myproject <- rsyncrosim::project(mylibrary, projectName)
   myscenario <- scenario(myproject, subScenarioName)
-  
+
   # Load data sheets needed for checks common to all scenarios
   rules <- datasheet(myscenario, "stsim_Transition") %>%
     dplyr::select(-Probability, StateClassIdDest)
-  
+
   stateClasses <- datasheet(myproject, "stsim_StateClass") %>%
     pull(Id)
-  
+
   # Check for duplicate rules --------------------------------------------------
-  
+
   # Are there any states with duplicate rules?
   # - within each EVT, mapzone, and transition type, there should only be one rule
   #   (ie. one row) for each state class
   duplicateRules <-
     rules %>%
-    group_by(StratumIdSource, SecondaryStratumId, TransitionTypeId, StateClassIdSource) %>%
+    group_by(
+      StratumIdSource,
+      SecondaryStratumId,
+      TransitionTypeId,
+      StateClassIdSource
+    ) %>%
     summarise(unique = (n() == 1)) %>%
     filter(!unique)
-  
-  if(nrow(duplicateRules) > 0) {
-    write_csv(duplicateRules, str_c("library/", runLibrary, " Duplicate Rules.csv"))
-    stop("Found duplicate rules for one or more states! Table of duplicate rules written to `library/", runLibrary, " Duplicate Rules.csv`")
+
+  if (nrow(duplicateRules) > 0) {
+    write_csv(
+      duplicateRules,
+      str_c("library/", runLibrary, " Duplicate Rules.csv")
+    )
+    stop(
+      "Found duplicate rules for one or more states! Table of duplicate rules written to `library/",
+      runLibrary,
+      " Duplicate Rules.csv`"
+    )
   }
-  
+
   # Check for invalid state classes --------------------------------------------
-  
+
   # Are there mixed life form or other invalid state classes?
   # - Mixed life form states can be identified by vegetation cover (x state) labels
   #   that don't match their vegetation height (y state) labels
   allowedStates <- read_csv(allowedStatesPath) %>%
     mutate(Id = EVC * 1000 + EVH) %>%
     pull(Id)
-  
+
   # Begin parallel processing
   plan(multisession, workers = nThreads)
-  
+
   invalidStates <- future_map_dfr(
     runTags,
     ~ tibble(
       `Map Zone` = .x,
-      state = unique(rast(str_c(cleanRasterDirectoryRelative, .x, "/StateClass.tif"))) %>% simplify),
-    .options = furrr_options(seed = TRUE)) %>%
+      state = unique(rast(str_c(
+        cleanRasterDirectoryRelative,
+        .x,
+        "/StateClass.tif"
+      ))) %>%
+        simplify
+    ),
+    .options = furrr_options(seed = TRUE)
+  ) %>%
     filter(!(state %in% allowedStates)) %>%
     mutate(
       EVC = as.integer(state / 1000),
-      EVH = state %% 1000) %>%
-    left_join(read_csv(evcTablePath) %>% dplyr::select(EVC = VALUE, EVC_NAME = CLASSNAMES), by = "EVC") %>%
-    left_join(read_csv(evhTablePath) %>% dplyr::select(EVH = VALUE, EVH_NAME = CLASSNAMES), by = "EVH") %>%
+      EVH = state %% 1000
+    ) %>%
+    left_join(
+      read_csv(evcTablePath) %>%
+        dplyr::select(EVC = VALUE, EVC_NAME = CLASSNAMES),
+      by = "EVC"
+    ) %>%
+    left_join(
+      read_csv(evhTablePath) %>%
+        dplyr::select(EVH = VALUE, EVH_NAME = CLASSNAMES),
+      by = "EVH"
+    ) %>%
     rename(`Invalid State Class` = state)
-  
+
   # Return to sequential operation
   plan(sequential)
 
   # Output
   write_csv(invalidStates, str_c("library/", runLibrary, " Invalid States.csv"))
-  if(nrow(invalidStates) >= 1)
-    warning("Found one or more invalid state classes! Table of invalid combinations of EVC and EVH written to `library/", runLibrary, " Invalid States.csv`")
-  
+  if (nrow(invalidStates) >= 1) {
+    warning(
+      "Found one or more invalid state classes! Table of invalid combinations of EVC and EVH written to `library/",
+      runLibrary,
+      " Invalid States.csv`"
+    )
+  }
+
   # Check for missing rules ---------------------------------------------------
-  
+
   # Are there combinations of EVC, EVH, EVT, MZ, and VDIST present in the rasters
   # for which there are no rules?
-  
+
   # Note that this requires the 'data/clean' folder to still be intact
-  
+
   ## +Generate list of rules present -------------------------------------------
-  
+
   # Read in the rules as codes and convert each combination of EVC, EVH, EVT,
   # MZ, and VDIST into a unique code
   ruleCodes <- read_csv(transitionTablePath) %>% # Read in the whole set of rules as text
     dplyr::select(EVC = EVCB, EVH = EVHB, EVT = EVT7B, MZ, VDIST) %>%
     unique %>%
-    map2_dfc(           # Recall that the table is read in as text. Here we pad the columns so they are uniform widths
-      c(3,3,4,2,3),     # Widths to pad each of the columns to. All are three except EVT (4), and MZ (2)
+    map2_dfc(
+      # Recall that the table is read in as text. Here we pad the columns so they are uniform widths
+      c(3, 3, 4, 2, 3), # Widths to pad each of the columns to. All are three except EVT (4), and MZ (2)
       str_pad,
       side = "left",
       pad = "0"
@@ -94,11 +128,12 @@ checkLibrary <- function(libraryName, projectName, runTags) {
 
   # Begin parallel processing across scenarios
   # plan(multisession, workers = nThreads)
-  
+
   # Note: This is currently not memory safe, so limiting thread number for now
   plan(sequential)
-  
-  allMissingRules <- future_map_dfr( # *_dfr indicates the results should be combined using `bind_rows()`
+
+  allMissingRules <- future_map_dfr(
+    # *_dfr indicates the results should be combined using `bind_rows()`
     runTags,
     listMissingRules,
     ruleCodes = ruleCodes,
@@ -113,56 +148,88 @@ checkLibrary <- function(libraryName, projectName, runTags) {
     filter(
       # Mechanical Add or Remove in Herbs is not meaningful
       (str_detect(VDIST_NAME, "Mechanical") & str_detect(EVC_NAME, "Herb")) |
-      # Transitions in EVC / EVH less than 100 (developed areas and non-fuels) are not meaningful
-      EVC < 100 |
-      EVH < 100)
-  write_csv(knownMissingRules, str_c("library/", runLibrary, " Known Missing Rules.csv"))
-  
+        # Transitions in EVC / EVH less than 100 (developed areas and non-fuels) are not meaningful
+        EVC < 100 |
+        EVH < 100
+    )
+  write_csv(
+    knownMissingRules,
+    str_c("library/", runLibrary, " Known Missing Rules.csv")
+  )
+
   # Find and save the complement of missing rules
   allMissingRules %>%
     anti_join(knownMissingRules) %>%
     write_csv(str_c("library/", runLibrary, " Missing Rules.csv"))
-  message(str_c("Table of missing rules written to `library/", runLibrary, " Missing Rules.csv`"))
+  message(str_c(
+    "Table of missing rules written to `library/",
+    runLibrary,
+    " Missing Rules.csv`"
+  ))
 }
 
-# Function to find missing rules from a Map Zone using a list of unqiue rule codes
+# Function to find missing rules from a Map Zone using a list of unique rule codes
 # - See `checkLibrary()` for details on the rule code format
 listMissingRules <- function(runTag, ruleCodes) {
   ## +Generate spatial data paths ----------------------------------------------
 
   # Directory to load cleaned rasters from for the given scenario
-  cleanRasterDirectory <- str_c(getwd(), "/", cleanRasterDirectoryRelative, "/", runTag, "/")
-  
+  cleanRasterDirectory <- str_c(
+    getwd(),
+    "/",
+    cleanRasterDirectoryRelative,
+    "/",
+    runTag,
+    "/"
+  )
+
   # Rasters needed to calculate codes
   stateClassRasterPath <- str_c(cleanRasterDirectory, "StateClass.tif")
   evtRasterPath <- str_c(cleanRasterDirectory, "EVT.tif")
   mapzoneRasterPath <- str_c(cleanRasterDirectory, "MapZone.tif")
   vdistRasterPath <- str_c(cleanRasterDirectory, "VDIST.tif")
-  
-  ## +Find codes presen in Map Zone --------------------------------------------
-  
+
+  ## +Find codes present in Map Zone -------------------------------------------
+
   mapzoneCodes <- getUniqueCodes(
     state = rast(stateClassRasterPath),
-    evt =   rast(evtRasterPath),
-    mz =    rast(mapzoneRasterPath),
+    evt = rast(evtRasterPath),
+    mz = rast(mapzoneRasterPath),
     vdist = rast(vdistRasterPath)
   )
-  
+
   ## +Generate human-readable table of missing rules ---------------------------
-  missingRules <- 
+  missingRules <-
     tibble(code = setdiff(mapzoneCodes, ruleCodes)) %>%
     mutate(code = str_pad(code, 15, "left", "0")) %>% # Make sure all codes are the same length before separating into columns by position
-    separate(code,
-             into = c("EVC", "EVH", "EVT", "MZ", "VDIST"),
-             sep = c(3,6,10,12)) %>%
+    separate(
+      code,
+      into = c("EVC", "EVH", "EVT", "MZ", "VDIST"),
+      sep = c(3, 6, 10, 12)
+    ) %>%
     mutate_all(as.numeric) %>%
     # Use look up tables to add names from the codes
-    left_join(read_csv(evcTablePath) %>% dplyr::select(EVC = VALUE, EVC_NAME = CLASSNAMES), by = "EVC") %>%
-    left_join(read_csv(evhTablePath) %>% dplyr::select(EVH = VALUE, EVH_NAME = CLASSNAMES), by = "EVH") %>%
-    left_join(read_csv(evtColorTablePath) %>% dplyr::select(EVT = VALUE, EVT_NAME), by = "EVT") %>%
-    left_join(read_csv(vdistTablePath) %>% dplyr::select(VDIST = value, d_type, d_severity, d_time), by = "VDIST") %>%
+    left_join(
+      read_csv(evcTablePath) %>%
+        dplyr::select(EVC = VALUE, EVC_NAME = CLASSNAMES),
+      by = "EVC"
+    ) %>%
+    left_join(
+      read_csv(evhTablePath) %>%
+        dplyr::select(EVH = VALUE, EVH_NAME = CLASSNAMES),
+      by = "EVH"
+    ) %>%
+    left_join(
+      read_csv(evtColorTablePath) %>% dplyr::select(EVT = VALUE, EVT_NAME),
+      by = "EVT"
+    ) %>%
+    left_join(
+      read_csv(vdistTablePath) %>%
+        dplyr::select(VDIST = value, d_type, d_severity, d_time),
+      by = "VDIST"
+    ) %>%
     unite(VDIST_NAME, d_type, d_severity, d_time, sep = " - ")
-  
+
   return(missingRules)
 }
 
@@ -171,26 +238,21 @@ listMissingRules <- function(runTag, ruleCodes) {
 getUniqueCodes <- function(state, evt, mz, vdist) {
   # Choose number of blocks to split rasters into when processing to limit memory
   blockInfo <- blocks(state)
-  
+
   # Calculate unique values in each block
   map(
     seq(blockInfo$n),
     function(i) {
       unique(
-        values(state,
-               row   = blockInfo$row[i],
-               nrows = blockInfo$nrows[i]) * 1e9 +
-        values(evt,
-               row   = blockInfo$row[i],
-               nrows = blockInfo$nrows[i]) * 1e5 +
-        values(mz,
-               row   = blockInfo$row[i],
-               nrows = blockInfo$nrows[i]) * 1e3 +
-        values(vdist,
-               row   = blockInfo$row[i],
-               nrows = blockInfo$nrows[i])
+        values(state, row = blockInfo$row[i], nrows = blockInfo$nrows[i]) *
+          1e9 +
+          values(evt, row = blockInfo$row[i], nrows = blockInfo$nrows[i]) *
+            1e5 +
+          values(mz, row = blockInfo$row[i], nrows = blockInfo$nrows[i]) * 1e3 +
+          values(vdist, row = blockInfo$row[i], nrows = blockInfo$nrows[i])
       )
-    }) %>%
+    }
+  ) %>%
     # Consolidate values from each block
     flatten_dbl %>%
     unique() %>%

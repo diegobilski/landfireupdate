@@ -10,10 +10,20 @@ layerizeDisturbance <- function(runTag) {
 
   # Directory to store cleaned rasters
   # Note that the working directory is prepended since SyncroSim needs absolute paths
-  cleanRasterDirectory <- str_c(getwd(), "/", cleanRasterDirectoryRelative, "/", runTag, "/")
+  cleanRasterDirectory <- str_c(
+    getwd(),
+    "/",
+    cleanRasterDirectoryRelative,
+    "/",
+    runTag,
+    "/"
+  )
 
   # Directory and prefix for FDIST binary rasters (spatial multipliers)
-  transitionMultiplierDirectory <- str_c(cleanRasterDirectory, "transitionMultipliers/")
+  transitionMultiplierDirectory <- str_c(
+    cleanRasterDirectory,
+    "transitionMultipliers/"
+  )
   dir.create(transitionMultiplierDirectory, showWarnings = F)
 
   # Clean Raster Paths
@@ -41,7 +51,8 @@ layerizeDisturbance <- function(runTag) {
     saveDistLayer,
     fullRaster = vdistRaster,
     transitionMultiplierDirectory = transitionMultiplierDirectory,
-    .options = furrr_options(seed = TRUE))
+    .options = furrr_options(seed = TRUE)
+  )
 
   # Return to sequential operation
   plan(sequential)

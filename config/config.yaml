@@ -12,9 +12,9 @@ mapzonesToKeep:
 #  -  1
 #  -  2
 #  -  7
-#  -  8
+  -  8
 #  -  9
-#  - 10
+  - 10
 #  - 18
   - 19
 #  - 20
@@ -39,7 +39,7 @@ projectName: NW Geo Area
 # Parallel Processing Options ---------------------------------------------------
 
 # Leave empty to use all cores to *build* the SyncroSim library
-nThreads:
+nThreads: 4
 
 # The default number of cores to use to *run* the SyncroSim library
 ssimJobs: 8
@@ -51,7 +51,7 @@ tileSize: 250
 # Testing Options --------------------------------------------------------------
 
 # Toggle to enable cropping for testing. 0 is disabled, 1 is enabled.
-cropToExtent: 1
+cropToExtent: 0
 
 # Path to a CSV encoding the extent to crop to, if enabled.
 # See example in `config/Crop Extents/` for proper format.

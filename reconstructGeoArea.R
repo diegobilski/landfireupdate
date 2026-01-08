@@ -8,11 +8,11 @@
 # Setup -----------------------------------------------------------------------
 
 library(rsyncrosim) # for building and connecting to SyncroSim files
-library(terra)     # provides functions for manipulating rasters
-library(furrr)      # for parallel iteration
-library(logr)       # for generating logs with RScript
-library(tidyverse)  # provides general data manipulation functions
-library(yaml)       # used to read configuration file
+library(terra) # provides functions for manipulating rasters
+library(furrr) # for parallel iteration
+library(logr) # for generating logs with RScript
+library(tidyverse) # provides general data manipulation functions
+library(yaml) # used to read configuration file
 
 terraOptions(memmax = 3)
 
@@ -32,11 +32,11 @@ log_print("Preparing stitched raster map output folder.")
 
 # Build temp folder names for each step of reconstruction
 categoricalTempFolder <- str_c(stitchedRasterDirectory, "categorical/")
-continuousTempFolder  <- str_c(stitchedRasterDirectory, "continuous/")
+continuousTempFolder <- str_c(stitchedRasterDirectory, "continuous/")
 evcCategoricalTempFolder <- str_c(stitchedRasterDirectory, "categorical/evc/")
 evhCategoricalTempFolder <- str_c(stitchedRasterDirectory, "categorical/evh/")
-evcContinuousTempFolder  <- str_c(stitchedRasterDirectory, "continuous/evc/")
-evhContinuousTempFolder  <- str_c(stitchedRasterDirectory, "continuous/evh/")
+evcContinuousTempFolder <- str_c(stitchedRasterDirectory, "continuous/evc/")
+evhContinuousTempFolder <- str_c(stitchedRasterDirectory, "continuous/evh/")
 
 # Delete outputs from previous run to avoid mixing results
 unlink(file.path(stitchedRasterDirectory), recursive = T)
@@ -77,22 +77,23 @@ myproject <- rsyncrosim::project(mylibrary, projectName)
 sink("temp.sink")
 
 resultScenarios <- scenario(mylibrary, summary = T) %>%
-  
 
   # Only consider result scenarios
   filter(IsResult == "Yes") %>%
-  
+
   # Examine run logs to see which runs failed
   mutate(
     failed = map_lgl(
       ScenarioId,
       ~ scenario(mylibrary, .x) %>%
         runLog %>%
-        str_detect("Failure"))) %>%
-  
+        str_detect("Failure")
+    )
+  ) %>%
+
   # Remove failed runs
   filter(failed == FALSE) %>%
-  
+
   # Only keep last run from each parent scenario
   group_by(ParentId) %>%
   filter(ScenarioId == max(ScenarioId)) %>%
@@ -102,18 +103,23 @@ resultScenarios <- scenario(mylibrary, summary = T) %>%
 sink()
 unlink("temp.sink")
 
-if(length(resultScenarios) == 0)
+if (length(resultScenarios) == 0) {
   stop(str_c(
     "No result scenarios found! Please ensure that you've run the relevant ",
     "SyncroSim scenarios and that the library and project name set in the ",
-    "config file match those of the maps you are trying to reconstruct."))
+    "config file match those of the maps you are trying to reconstruct."
+  ))
+}
 
 # Pull out the relevant raster from each result scenario as a list without using raster
-stateClassRasters <- 
-  map(resultScenarios,
-    function(sid) 
-      datasheetSpatRaster(scenario(mylibrary, sid), "stsim_OutputSpatialState", timestep = 1)
-  )
+stateClassRasters <-
+  map(resultScenarios, function(sid) {
+    datasheetSpatRaster(
+      scenario(mylibrary, sid),
+      "stsim_OutputSpatialState",
+      timestep = 1
+    )
+  })
 
 # Keep track of the number of Map Zones for later
 mapzoneCount <- length(stateClassRasters)
@@ -121,7 +127,11 @@ mapzoneCount <- length(stateClassRasters)
 # Generate a raster file name for each result scenario found
 rasterFileNames <- str_c(seq(mapzoneCount), ".tif")
 
-log_print(str_c("Found ", mapzoneCount, " valid scenario(s)! Please check that this correct!"))
+log_print(str_c(
+  "Found ",
+  mapzoneCount,
+  " valid scenario(s)! Please check that this is correct!"
+))
 
 # Generate EVC and EVH from State Class ----------------------------------------
 
@@ -136,9 +146,11 @@ future_pwalk(
   list(
     stateClassRaster = stateClassRasters,
     evcRasterPath = str_c(evcCategoricalTempFolder, rasterFileNames),
-    evhRasterPath = str_c(evhCategoricalTempFolder, rasterFileNames)),
+    evhRasterPath = str_c(evhCategoricalTempFolder, rasterFileNames)
+  ),
   separateStateClass,
-  .options = furrr_options(seed = TRUE))
+  .options = furrr_options(seed = TRUE)
+)
 
 # Return to sequential operation
 plan(sequential)
@@ -156,15 +168,15 @@ evcContRasterPaths <- str_c(evcContinuousTempFolder, rasterFileNames)
 evhContRasterPaths <- str_c(evhContinuousTempFolder, rasterFileNames)
 
 # Setup the two crosswalks from class codes to continuous codes
-evcCrosswalk <- 
+evcCrosswalk <-
   read_csv(evcTablePath) %>%
-    select(from = VALUE, to = CONTINUOUS) %>%
-    as.matrix
+  select(from = VALUE, to = CONTINUOUS) %>%
+  as.matrix
 
-evhCrosswalk <- 
+evhCrosswalk <-
   read_csv(evhTablePath) %>%
-    select(from = VALUE, to = CONTINUOUS) %>%
-    as.matrix
+  select(from = VALUE, to = CONTINUOUS) %>%
+  as.matrix
 
 # Begin parallel processing
 # plan(multisession, workers = nThreads)
@@ -176,21 +188,25 @@ evcContinuousRasters <-
   future_pmap(
     list(
       x = evcRasters,
-      filename = evcContRasterPaths),
+      filename = evcContRasterPaths
+    ),
     classify,
     rcl = evcCrosswalk,
     overwrite = TRUE,
-    .options = furrr_options(seed = TRUE))
+    .options = furrr_options(seed = TRUE)
+  )
 
 evhContinuousRasters <-
   future_pmap(
     list(
       x = evhRasters,
-      filename = evhContRasterPaths),
+      filename = evhContRasterPaths
+    ),
     classify,
     rcl = evhCrosswalk,
     overwrite = TRUE,
-    .options = furrr_options(seed = TRUE))
+    .options = furrr_options(seed = TRUE)
+  )
 
 # Return to sequential operation
 plan(sequential)
@@ -203,10 +219,10 @@ unlink(file.path(categoricalTempFolder), recursive = T)
 log_print("Stitching and overlaying raster maps.")
 
 # If in test mode, crop down the raw continuous EVC and EVH maps
-if(cropToExtent) {
+if (cropToExtent) {
   evcContinuousRawRaster <- crop(evcContinuousRawRaster, cropExtent)
   evhContinuousRawRaster <- crop(evhContinuousRawRaster, cropExtent)
-  
+
   # Also update the extent to use for merging
   fullExtent <- cropExtent
 }
@@ -215,19 +231,27 @@ if(cropToExtent) {
 # This will allow us to pass a variable number of arguments to `raster::merge()`
 # using `do.call()`
 
-evcMergeArgs <- c(evcContinuousRasters,                   # the updated continuous data
-                  evcContinuousRawRaster,                 # the undisturbed continuous data 
-                  filename = evcOverlaidRasterPath,       # output file name
-                  #ext = fullExtent,                      # the final extent of the raster - Note: not recognized by terra::merge
-                  wopt = list(list(datatype = 'INT2S',    # used signed integers for output
-                               overwrite = T)))
+evcMergeArgs <- c(
+  evcContinuousRasters, # the updated continuous data
+  evcContinuousRawRaster, # the undisturbed continuous data
+  filename = evcOverlaidRasterPath, # output file name
+  #ext = fullExtent,                      # the final extent of the raster - Note: not recognized by terra::merge
+  wopt = list(list(
+    datatype = 'INT2S', # used signed integers for output
+    overwrite = T
+  ))
+)
 
-evhMergeArgs <- c(evhContinuousRasters,                   # the updated continuous data
-                  evhContinuousRawRaster,                 # the undisturbed continuous data 
-                  filename = evhOverlaidRasterPath,       # output file name
-                  #ext = fullExtent,                      # the final extent of the raster - Note: not recognized by terra::merge
-                  wopt = list(list(datatype = 'INT2S',    # used signed integers for output
-                               overwrite = T)))
+evhMergeArgs <- c(
+  evhContinuousRasters, # the updated continuous data
+  evhContinuousRawRaster, # the undisturbed continuous data
+  filename = evhOverlaidRasterPath, # output file name
+  #ext = fullExtent,                      # the final extent of the raster - Note: not recognized by terra::merge
+  wopt = list(list(
+    datatype = 'INT2S', # used signed integers for output
+    overwrite = T
+  ))
+)
 
 # Use raster::merge() to overlay the new continuous data over the old continuous
 # EVC and EVH raster maps
@@ -239,8 +263,10 @@ unlink(file.path(continuousTempFolder), recursive = T)
 
 # Wrap up ----------------------------------------------------------------------
 
-log_print(str_c("Done reconstructing Geo Area! ", 
-              "Stitched raster maps can be found in ",
-              stitchedRasterDirectory))
+log_print(str_c(
+  "Done reconstructing Geo Area! ",
+  "Stitched raster maps can be found in ",
+  stitchedRasterDirectory
+))
 
 log_close()
