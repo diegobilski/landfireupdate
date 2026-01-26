@@ -31,10 +31,10 @@ Below are the instructions to setup, configure, and run the code.
 ### Dependencies
 
 These scripts require working installations of R and SyncroSim, and were
-developed on R version v4.3.3, SyncroSim v3.0.21, and rsyncrosim v2.0.1. 
+developed on R version v4.5.2, SyncroSim v3.1.26, and rsyncrosim v2.1.9. 
 Additionally the following R packages must be installed: `rsyncrosim`,
 `tidyverse`, `terra`,  `furrr`, `logr`, `yaml`. The ST-Sim package
-(v4.3.5) must also be installed in SyncroSim. The instructions to run the
+(v4.5.3) must also be installed in SyncroSim. The instructions to run the
 script assume you will be using [RStudio](https://rstudio.com/), however, this
 is not a strict requirement.
 
@@ -169,7 +169,7 @@ applied retroactively by rerunning the `reconstructGeoArea.R` script.
 
 The suggested run configuration will depend on the available compute resources.
 Below is a table outlining some general recommendations and the corresponding
-expected run times.
+expected run times (estimated using SyncroSim version 3.0.21 and ST-Sim version 4.3.5).
 
 | Min. Processors | Min. Memory | SyncroSim Jobs | Tile Size | Approx. Run Time for NW Geo Area | Approx. Run Time for Map Zone 19 |
 |----------------:|------------:|---------------:|----------:|---------------------------------:|---------------------------------:|
