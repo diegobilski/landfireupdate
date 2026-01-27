@@ -27,7 +27,7 @@ if (config$nThreads %>% is.null) {
   nThreads <- future::availableCores()
   message("Using all available cores to build SyncroSim Library")
 } else if (
-  config$nThreads %>% as.integer %>% is.na | config$nThreads %>% as.integer < 1
+  config$nThreads %>% as.integer %>% is.na || config$nThreads %>% as.integer < 1
 ) {
   nThreads <- future::availableCores()
   warning(
@@ -39,16 +39,19 @@ if (config$nThreads %>% is.null) {
 
 # Check that the number of requested SyncroSim jobs is valid
 if (
-  config$ssimJobs %>% as.integer %>% is.na | config$ssimJobs %>% as.integer < 1
+  config$ssimJobs %>%
+    is.null ||
+    config$ssimJobs %>% as.integer %>% is.na ||
+    config$ssimJobs %>% as.integer < 1
 ) {
-  ssimJobs <- 8
+  ssimJobs <- 4
   warning(
-    "Invalid number of SyncroSim jobs requested. Using default value of 8 SyncroSim jobs to run the library after building."
+    "Invalid number of SyncroSim jobs requested. Using default value of 4 SyncroSim jobs to run the library after building."
   )
 }
 
 # Check that the number of tiling columns is valid
-if (as.integer(config$tileSize) %>% is.na) {
+if (config$tileSize %>% is.null || as.integer(config$tileSize) %>% is.na) {
   warning(
     "Invalid number of tile size in config file. Using default tile size of 250."
   )
@@ -57,9 +60,9 @@ if (as.integer(config$tileSize) %>% is.na) {
 
 # Check whether or not crop to a smaller extent for testing
 cropToExtent <- FALSE
-if (config$cropToExtent == "1") {
+if (!config$cropToExtent %>% is.null && config$cropToExtent == "1") {
   cropToExtent <- TRUE
-} else if (config$cropToExtent != "0") {
+} else if (config$cropToExtent %>% is.null || config$cropToExtent != "0") {
   warning(
     "Unrecognized value for `cropToExtent` in config file. Not cropping to extent!"
   )
@@ -255,7 +258,7 @@ if (cropToExtent) {
     )
   }
 
-  cropExtent <- extent(
+  cropExtent <- ext(
     cropData$xmin,
     cropData$xmax,
     cropData$ymin,
