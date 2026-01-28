@@ -565,7 +565,7 @@ buildSsimScenarios <- function(
   ssimSession <- session(ssimDir)
   mylibrary <- ssimLibrary(libraryName, session = ssimSession)
   myproject <- rsyncrosim::project(mylibrary, projectName)
-  myscenario <- scenario(myproject, scenarioName, overwrite = T)
+  myscenario <- scenario(myproject, scenarioName, overwrite = TRUE)
   description(myscenario) <- scenarioDescription
 
   ## +Common Dependency --------------------------------------------------------
