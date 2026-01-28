@@ -386,10 +386,13 @@ initializeSsimLibrary <- function(libraryName, projectName) {
       number = suppressWarnings(replace(number, is.na(number), 13:100)),
       # Deal with mixed forms
       mixedLifeForm = case_when(
-        str_detect(StateLabelXId, "Tr") & !str_detect(StateLabelYId, "Fr") ~ T,
-        str_detect(StateLabelXId, "Sh") & !str_detect(StateLabelYId, "Sh") ~ T,
-        str_detect(StateLabelXId, "Hb") & !str_detect(StateLabelYId, "Hb") ~ T,
-        T ~ F
+        str_detect(StateLabelXId, "Tr") &
+          !str_detect(StateLabelYId, "Fr") ~ TRUE,
+        str_detect(StateLabelXId, "Sh") &
+          !str_detect(StateLabelYId, "Sh") ~ TRUE,
+        str_detect(StateLabelXId, "Hb") &
+          !str_detect(StateLabelYId, "Hb") ~ TRUE,
+        TRUE ~ FALSE
       ),
       number = if_else(mixedLifeForm, number + 14, number),
       # Clean up
@@ -584,7 +587,7 @@ buildSsimScenarios <- function(
 
   multiplierFileNames <-
     transitionMultiplierDirectory %>%
-    list.files("tif$", full.names = T)
+    list.files("tif$", full.names = TRUE)
 
   # Compose and save the data frame
   if (length(multiplierFileNames) > 0) {
